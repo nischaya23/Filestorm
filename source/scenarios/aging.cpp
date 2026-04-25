@@ -25,6 +25,22 @@
 #include <random>
 #include <string_view>
 
+
+#define EXT4_IOC_SET_RESERVE _IOW('f', 90, struct ext4_hard_reserve_req)
+struct ext4_hard_reserve_req {
+	uint64_t blocks;
+};
+
+static void ext4_set_reserve_ioctl(int fd, uint64_t bytes)
+{
+    struct ext4_hard_reserve_req req;
+    req.blocks = (bytes + 4095)/4096;
+
+    if (ioctl(fd, EXT4_IOC_SET_RESERVE, &req) < 0) {
+        perror("EXT4_IOC_SET_RESERVE");
+    }
+}
+
 AgingScenario::AgingScenario() {
   _name = "aging";
   _description = "Scenario for testing filesystem aging.";
@@ -199,7 +215,9 @@ void AgingScenario::run(std::unique_ptr<IOEngine>& ioengine) {
         generate_random_chunk(static_cast<char*>(aligned_buf), block_size);
 
         int fd = ioengine->open_file(file_node->path(true).c_str(), O_WRONLY | O_CREAT | O_TRUNC, getParameter("direct_io").get_bool());
-
+        #ifdef IOCTL
+        ext4_set_reserve_ioctl(fd,file_size.get_value() );
+        #endif
         MeasuredCBAction action([&]() {
           off_t offset = 0;
           uint64_t written_bytes_optimistic = 0;
